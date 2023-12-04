@@ -16,7 +16,7 @@ create type db_validation.schema_validate_checks as enum (
     'valid_procedure_name',
     'valid_function_name'
     /*
-    TODO
+    --TODO
     'valid_constraint_name',
     'valid_type_name',
     'valid_domain_name',
