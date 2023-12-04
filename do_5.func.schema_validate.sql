@@ -1,4 +1,4 @@
---Валидатор схемы БД v3
+--Валидатор схемы БД
 create or replace function db_validation.schema_validate()
     returns void
     stable

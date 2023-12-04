@@ -1,15 +1,49 @@
-
--- валидация БД v3_rabota
+-- валидация БД
 insert into db_validation.schema_validate_config (
-    checks, schemas_ignore_regexp, schemas_ignore, tables_ignore_regexp, tables_ignore
+    checks,
+    schemas_ignore_regexp, schemas_ignore,
+    tables_ignore_regexp, tables_ignore,
+
+    schema_name_regexp,
+    table_name_regexp, table_column_name_regexp,
+    view_name_regexp, view_column_name_regexp,
+    trigger_name_regexp, procedure_name_regexp, function_name_regexp
+    /*
+    --TODO
+    constraint_name_regexp,
+    type_name_regexp,
+    domain_name_regexp,
+    role_name_regexp,
+    */
+
 )
 values
 (
-    array['has_pk_uk', 'has_not_redundant_index', 'has_index_for_fk', 'has_table_comment', 'has_column_comment']::db_validation.schema_validate_checks[],
+    array[
+        'has_pk_uk',
+        'has_not_redundant_index',
+        'has_index_for_fk',
+        'has_table_comment',
+        'has_column_comment',
+
+        'valid_schema_name',
+        'valid_table_name', 'valid_table_column_name',
+        'valid_view_name', 'valid_view_column_name',
+        'valid_trigger_name', 'valid_procedure_name', 'valid_function_name'
+    ]::db_validation.schema_validate_checks[],
     null,
     null, --array['unused', 'migration', 'test']::regnamespace[],
     '(?<![a-z])(te?mp|test|unused|backups?|deleted)(?![a-z])',
-    null --array['public._migration_versions']::regclass[]
+    null, --array['public._migration_versions']::regclass[]
+
+    '^[a-z][a-z\d_\-]*[a-z\d]$',
+    '^[a-z][a-z\d_\-]*[a-z\d]$',
+    '^[a-z][a-z\d_\-]*[a-z\d]$',
+    '^[a-z][a-z\d_\-]*[a-z\d]$',
+    '^[a-z][a-z\d_\-]*[a-z\d]$',
+    '^[a-z][a-z\d_\-]*[a-z\d]$',
+    '^[a-z][a-z\d_\-]*[a-z\d]$',
+    '^[a-z][a-z\d_\-]*[a-z\d]$'
 );
 
 -- TEST

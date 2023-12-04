@@ -23,6 +23,7 @@ create type db_validation.schema_validate_checks as enum (
     'valid_role_name'
     */
 );
+-- alter type db_validation.schema_validate_checks owner to alexan;
 
 comment on type db_validation.schema_validate_checks is $$
 Проверки в валидаторе качества схемы БД:
@@ -33,6 +34,7 @@ comment on type db_validation.schema_validate_checks is $$
     has_column_comment      - наличие описания для колонки
     has_not_varchar_columns   - отсутствие VARCHAR(n) колонок
     has_not_timestamp_columns - отсутствие timestamp колонок
+
     valid_table_name		- валидные названия таблиц
     valid_table_column_name - валидные названия колонок таблиц
     valid_view_name			- валидные названия представлений
@@ -42,5 +44,3 @@ comment on type db_validation.schema_validate_checks is $$
     valid_procedure_name	- валидные названия процедур
     valid_function_name		- валидные названия функций
 $$;
-
--- alter type db_validation.schema_validate_checks owner to alexan;
