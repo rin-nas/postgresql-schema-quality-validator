@@ -1,5 +1,5 @@
 --Валидатор схемы БД
-create or replace function db_validation.schema_validate()
+create function db_validation.schema_validate()
     returns void
     stable
     --returns null on null input
@@ -15,6 +15,455 @@ BEGIN
     select * into config from db_validation.schema_validate_config order by id limit 1;
 
     config.schemas_ignore := coalesce(config.schemas_ignore, '{}') || '{information_schema,pg_catalog,pg_toast}';
+
+    --Проверка на валидость имён колонок в представлении
+    if config.checks is null or 'valid_view_column_name' = any(config.checks)
+    then
+        raise notice 'valid_view_column_name';
+
+        select
+            'Колонка в представлении имеет некорректное имя' as message,
+            format('Колонка %I.%I.%I имеет некорректное имя %I', t.table_schema, t.table_name, c.column_name, c.column_name) as detail,
+            format('Имя колонки должно соответствовать регулярному выражению: %s', config.view_column_name_regexp) as hint,
+            '42602' /*invalid_name*/ as errcode,
+            t.table_schema as schema,
+            t.table_name as table,
+            c.column_name as column
+        into rec
+        from information_schema.columns as c
+        inner join information_schema.tables as t on t.table_schema = c.table_schema
+                                                 and t.table_name = c.table_name
+                                                 and t.table_type = 'VIEW'
+        cross join concat_ws('.', quote_ident(t.table_schema), quote_ident(t.table_name)) as p(table_full_name)
+
+        where true
+		and c.column_name !~ config.view_column_name_regexp
+          -- исключаем схемы
+          AND (config.schemas_ignore_regexp is null OR t.table_schema !~ config.schemas_ignore_regexp)
+          AND t.table_schema::regnamespace != ALL (config.schemas_ignore)
+          AND pg_catalog.has_schema_privilege(t.table_schema, 'USAGE') --fix [42501] ERROR: permission denied for schema ...
+
+          -- исключаем таблицы
+          AND (config.tables_ignore_regexp is null OR p.table_full_name !~ config.tables_ignore_regexp)
+          AND (config.tables_ignore is null OR p.table_full_name::regclass != ALL (config.tables_ignore))
+
+          -- исключаем таблицы-секции
+          AND NOT EXISTS (SELECT
+                          FROM   pg_catalog.pg_inherits AS i
+                          WHERE  i.inhrelid = (t.table_schema || '.' || t.table_name)::regclass
+        )
+        limit 1;
+
+        IF FOUND THEN
+            -- https://www.postgrespro.ru/docs/postgresql/14/plpgsql-errors-and-messages
+            RAISE EXCEPTION using
+                message = rec.message,
+                detail  = rec.detail,
+                hint    = rec.hint,
+                errcode = rec.errcode,
+                column  = rec.column,
+                --constraint = '',
+                table    = rec.table,
+                schema   = rec.schema,
+                datatype = rec.datatype;
+        END IF;
+
+    end if;
+
+    --Проверка на валидость имён колонок в таблице
+    if config.checks is null or 'valid_table_column_name' = any(config.checks)
+    then
+        raise notice 'valid_table_column_name';
+
+        select
+            'Колонка в таблице имеет некорректное имя' as message,
+            format('Колонка %I.%I.%I имеет некорректное имя %I', t.table_schema, t.table_name, c.column_name, c.column_name) as detail,
+            format('Имя колонки должно соответствовать регулярному выражению: %s', config.table_column_name_regexp) as hint,
+            '42602' /*invalid_name*/ as errcode,
+            t.table_schema as schema,
+            t.table_name as table,
+            c.column_name as column
+        into rec
+        from information_schema.columns as c
+        inner join information_schema.tables as t on t.table_schema = c.table_schema
+                                                 and t.table_name = c.table_name
+                                                 and t.table_type = 'BASE TABLE'
+        cross join concat_ws('.', quote_ident(t.table_schema), quote_ident(t.table_name)) as p(table_full_name)
+
+        where true
+		and c.column_name !~ config.table_column_name_regexp
+          -- исключаем схемы
+          AND (config.schemas_ignore_regexp is null OR t.table_schema !~ config.schemas_ignore_regexp)
+          AND t.table_schema::regnamespace != ALL (config.schemas_ignore)
+          AND pg_catalog.has_schema_privilege(t.table_schema, 'USAGE') --fix [42501] ERROR: permission denied for schema ...
+
+          -- исключаем таблицы
+          AND (config.tables_ignore_regexp is null OR p.table_full_name !~ config.tables_ignore_regexp)
+          AND (config.tables_ignore is null OR p.table_full_name::regclass != ALL (config.tables_ignore))
+
+          -- исключаем таблицы-секции
+          AND NOT EXISTS (SELECT
+                          FROM   pg_catalog.pg_inherits AS i
+                          WHERE  i.inhrelid = (t.table_schema || '.' || t.table_name)::regclass
+        )
+        limit 1;
+
+        IF FOUND THEN
+            -- https://www.postgrespro.ru/docs/postgresql/14/plpgsql-errors-and-messages
+            RAISE EXCEPTION using
+                message = rec.message,
+                detail  = rec.detail,
+                hint    = rec.hint,
+                errcode = rec.errcode,
+                column  = rec.column,
+                --constraint = '',
+                table    = rec.table,
+                schema   = rec.schema,
+                datatype = rec.datatype;
+        END IF;
+
+    end if;
+
+    --Проверка на валидость имён процедур
+    if config.checks is null or 'valid_procedure_name' = any(config.checks)
+    then
+        raise notice 'valid_procedure_name';
+
+        select
+            'Процедура имеет некорректное имя' as message,
+            format('Процедура %I.%I имеет некорректное имя %I', r.specific_schema, r.specific_name, r.specific_name) as detail,
+            format('Имя процедуры должно соответствовать регулярному выражению: %s', config.procedure_name_regexp) as hint,
+            '42602' /*invalid_name*/ as errcode,
+            r.specific_schema as schema
+        into rec
+        from information_schema.routines as r
+        where r.specific_name !~ config.procedure_name_regexp
+          and r.external_name is null --не выбирать все встроенные процедуры в базу (штатные, написаны на сях)
+          and r.routine_type = 'PROCEDURE'
+          -- исключаем схемы
+          AND (config.schemas_ignore_regexp is null OR r.specific_schema !~ config.schemas_ignore_regexp)
+          AND r.specific_schema::regnamespace != ALL (config.schemas_ignore)
+          AND pg_catalog.has_schema_privilege(r.specific_schema, 'USAGE') --fix [42501] ERROR: permission denied for schema ...
+        limit 1;
+
+        IF FOUND THEN
+            -- https://www.postgrespro.ru/docs/postgresql/14/plpgsql-errors-and-messages
+            RAISE EXCEPTION using
+                message = rec.message,
+                detail  = rec.detail,
+                hint    = rec.hint,
+                errcode = rec.errcode,
+                column  = rec.column,
+                --constraint = '',
+                table    = rec.table,
+                schema   = rec.schema,
+                datatype = rec.datatype;
+        END IF;
+
+    end if;
+
+    --Проверка на валидость имён функций
+    if config.checks is null or 'valid_function_name' = any(config.checks)
+    then
+        raise notice 'valid_function_name';
+
+        select
+            'Функция имеет некорректное имя' as message,
+            format('Функция %I.%I имеет некорректное имя %I', r.specific_schema, r.specific_name, r.specific_name) as detail,
+            format('Имя функции должно соответствовать регулярному выражению: %s', config.function_name_regexp) as hint,
+            '42602' /*invalid_name*/ as errcode,
+            r.specific_schema as schema
+        into rec
+        from information_schema.routines as r
+        where r.specific_name !~ config.function_name_regexp
+          and r.external_name is null --не выбирать все встроенные функции в базу (штатные, написаны на сях)
+          and r.routine_type = 'FUNCTION'
+          -- исключаем схемы
+          AND (config.schemas_ignore_regexp is null OR r.specific_schema !~ config.schemas_ignore_regexp)
+          AND r.specific_schema::regnamespace != ALL (config.schemas_ignore)
+          AND pg_catalog.has_schema_privilege(r.specific_schema, 'USAGE') --fix [42501] ERROR: permission denied for schema ...
+        limit 1;
+
+        IF FOUND THEN
+            -- https://www.postgrespro.ru/docs/postgresql/14/plpgsql-errors-and-messages
+            RAISE EXCEPTION using
+                message = rec.message,
+                detail  = rec.detail,
+                hint    = rec.hint,
+                errcode = rec.errcode,
+                column  = rec.column,
+                --constraint = '',
+                table    = rec.table,
+                schema   = rec.schema,
+                datatype = rec.datatype;
+        END IF;
+
+    end if;
+
+    --Проверка на валидость имён схем
+    if config.checks is null or 'valid_schema_name' = any(config.checks)
+    then
+        raise notice 'valid_schema_name';
+
+        select
+            'Схема имеет некорректное имя' as message,
+            format('Схема %I.%I имеет некорректное имя %I', t.schema_name) as detail,
+            format('Имя схемы должно соответствовать регулярному регулярному выражению: %s', config.schema_name_regexp) as hint,
+            '42602' /*invalid_name*/ as errcode,
+            t.schema_name as schema
+        into rec
+        from information_schema.schemata as t
+        where schema_name !~ config.schema_name_regexp
+          -- исключаем схемы
+          AND (config.schemas_ignore_regexp is null OR t.schema_name !~ config.schemas_ignore_regexp)
+          AND t.schema_name::regnamespace != ALL (config.schemas_ignore)
+          AND pg_catalog.has_schema_privilege(t.schema_name, 'USAGE') --fix [42501] ERROR: permission denied for schema ...
+        limit 1;
+
+        IF FOUND THEN
+            -- https://www.postgrespro.ru/docs/postgresql/14/plpgsql-errors-and-messages
+            RAISE EXCEPTION using
+                message = rec.message,
+                detail  = rec.detail,
+                hint    = rec.hint,
+                errcode = rec.errcode,
+                column  = rec.column,
+                --constraint = '',
+                table    = rec.table,
+                schema   = rec.schema,
+                datatype = rec.datatype;
+        END IF;
+
+    end if;
+
+    --Проверка на валидость имён представлений
+    if config.checks is null or 'valid_view_name' = any(config.checks)
+    then
+        raise notice 'valid_view_name';
+
+        select
+            'Представление имеет некорректное имя' as message,
+            format('Представление %I.%I имеет некорректное имя %I', t.table_schema, t.table_name, t.table_name) as detail,
+            format('Имя представления должно соответствовать регулярному регулярному выражению: %s', config.view_name_regexp) as hint,
+            '42602' /*invalid_name*/ as errcode,
+            t.table_schema as schema,
+            t.table_name as "table"
+        into rec
+        from information_schema.tables as t
+        cross join concat_ws('.', quote_ident(t.table_schema), quote_ident(t.table_name)) as p(table_full_name)
+        where t.table_type = 'VIEW'
+          AND t.table_name !~ config.view_name_regexp
+
+          -- исключаем схемы
+          AND (config.schemas_ignore_regexp is null OR t.table_schema !~ config.schemas_ignore_regexp)
+          AND t.table_schema::regnamespace != ALL (config.schemas_ignore)
+          AND pg_catalog.has_schema_privilege(t.table_schema, 'USAGE') --fix [42501] ERROR: permission denied for schema ...
+
+          -- исключаем таблицы
+          AND (config.tables_ignore_regexp is null OR p.table_full_name !~ config.tables_ignore_regexp)
+          AND (config.tables_ignore is null OR p.table_full_name::regclass != ALL (config.tables_ignore))
+        limit 1;
+
+        IF FOUND THEN
+            -- https://www.postgrespro.ru/docs/postgresql/14/plpgsql-errors-and-messages
+            RAISE EXCEPTION using
+                message = rec.message,
+                detail  = rec.detail,
+                hint    = rec.hint,
+                errcode = rec.errcode,
+                column  = rec.column,
+                --constraint = '',
+                table    = rec.table,
+                schema   = rec.schema,
+                datatype = rec.datatype;
+        END IF;
+
+    end if;
+
+    --Проверка на валидость имён триггеров
+    if config.checks is null or 'valid_trigger_name' = any(config.checks)
+    then
+        raise notice 'valid_trigger_name';
+
+        select
+            'Триггер имеет некорректное имя' as message,
+            format('Триггер %I.%I имеет некорректное имя %I', t.trigger_schema, t.trigger_name, t.trigger_name) as detail,
+            format('Имя тригера должно соответствовать регулярному регулярному выражению: %s', config.trigger_name_regexp) as hint,
+            '42602' /*invalid_name*/ as errcode,
+            t.trigger_schema as schema,
+            t.trigger_name as "table"
+        into rec
+        from information_schema.triggers as t
+        cross join concat_ws('.', quote_ident(t.trigger_schema), quote_ident(t.trigger_name)) as p(trigger_full_name)
+        where t.trigger_name !~ config.trigger_name_regexp
+          -- исключаем схемы
+          AND (config.schemas_ignore_regexp is null OR t.trigger_schema !~ config.schemas_ignore_regexp)
+          AND t.trigger_schema::regnamespace != ALL (config.schemas_ignore)
+          AND pg_catalog.has_schema_privilege(t.trigger_schema, 'USAGE') --fix [42501] ERROR: permission denied for schema ...
+        limit 1;
+
+        IF FOUND THEN
+            -- https://www.postgrespro.ru/docs/postgresql/14/plpgsql-errors-and-messages
+            RAISE EXCEPTION using
+                message = rec.message,
+                detail  = rec.detail,
+                hint    = rec.hint,
+                errcode = rec.errcode,
+                column  = rec.column,
+                --constraint = '',
+                table    = rec.table,
+                schema   = rec.schema,
+                datatype = rec.datatype;
+        END IF;
+
+    end if;
+
+    --Проверка на валидость имён таблиц
+    if config.checks is null or 'valid_table_name' = any(config.checks)
+    then
+        raise notice 'valid_table_name';
+
+        select
+        'Таблица имеет некорректное имя' as message,
+        format('Таблица %I.%I имеет некорректное имя %I', t.table_schema, t.table_name, t.table_name) as detail,
+        format('Имя таблицы должно соответствовать регулярному регулярному выражению: %s', config.table_name_regexp)  as hint,
+        t.table_schema as schema,
+        t.table_name as "table",
+        '42602' /*invalid_name*/ as errcode
+        into rec
+        from information_schema.tables as t
+        cross join concat_ws('.', quote_ident(t.table_schema), quote_ident(t.table_name)) as p(table_full_name)
+        where t.table_type = 'BASE TABLE'
+          AND table_name !~ config.table_name_regexp
+
+          -- исключаем схемы
+          AND (config.schemas_ignore_regexp is null OR t.table_schema !~ config.schemas_ignore_regexp)
+          AND t.table_schema::regnamespace != ALL (config.schemas_ignore)
+          AND pg_catalog.has_schema_privilege(t.table_schema, 'USAGE') --fix [42501] ERROR: permission denied for schema ...
+
+          -- исключаем таблицы
+          AND (config.tables_ignore_regexp is null OR p.table_full_name !~ config.tables_ignore_regexp)
+          AND (config.tables_ignore is null OR p.table_full_name::regclass != ALL (config.tables_ignore))
+        limit 1;
+
+        IF FOUND THEN
+            -- https://www.postgrespro.ru/docs/postgresql/14/plpgsql-errors-and-messages
+            RAISE EXCEPTION using
+                message = rec.message,
+                detail  = rec.detail,
+                hint    = rec.hint,
+                errcode = rec.errcode,
+                column  = rec.column,
+                --constraint = '',
+                table    = rec.table,
+                schema   = rec.schema,
+                datatype = rec.datatype;
+        END IF;
+
+    end if;
+
+    if config.checks is null
+       or 'has_not_varchar_columns' = any(config.checks) -- Отсутствие varchar(N)
+       or 'has_not_timestamp_columns' = any(config.checks) -- Отсутствие timestamp колонок
+    then
+        raise notice 'check has_not_varchar_columns or has_not_timestamp_columns';
+
+        select
+            'Колонка имеет устаревший тип' as message,
+
+            case when e.is_varchar then format('Колонка %I.%I.%I имеет устаревший тип %s(%s)', c.table_schema, c.table_name, c.column_name, c.udt_name, c.character_maximum_length)
+                 when e.is_timestamp then format('Колонка %I.%I.%I имеет устаревший тип %s ', c.table_schema, c.table_name, c.column_name, c.udt_name)
+            end as detail,
+
+            case when e.is_varchar then
+                     format(concat_ws(E'\n',
+                             'Вместо типов char(n) и varchar(n) используйте тип text. Скорость чтения-записи не изменится.',
+                             'Проверку на максимальную длину нужно сделать через ограничение CHECK. При этом лучше сразу задать ограничение на минимальную длину.',
+                             --TODO в примере команды нужно корректно выводить значение колонки по умолчанию
+                             E'Пример команды:\nALTER TABLE %I.%I ALTER COLUMN %I TYPE text DEFAULT NULL CHECK(length(%I) BETWEEN 1 AND %s)'
+                            ),
+                            c.table_schema, c.table_name, c.column_name, c.column_name, c.character_maximum_length
+                           )
+                 when e.is_timestamp then
+                     format(concat_ws(E'\n',
+                             'Вместо типa TIMESTAMP (WITHOUT TIME ZONE) используйте тип TIMESTAMPTZ (TIMESTAMP WITH TIME ZONE).',
+                             --TODO в примере команды нужно корректно выводить значение колонки по умолчанию
+                             E'Пример команды:\nALTER TABLE %I.%I ALTER COLUMN %I TYPE TIMESTAMPTZ(0) DEFAULT NOW() NOT NULL CHECK(%I <= now() + interval \'10m\')'
+                            ),
+                            c.table_schema, c.table_name, c.column_name, c.column_name, c.column_name
+                           )
+            end as hint,
+
+            '42611' /*invalid column definition*/ as errcode,
+            c.table_schema as schema,
+            c.table_name as "table",
+            c.column_name as "column",
+            c.udt_name as datatype
+        into rec
+        from information_schema.columns as c
+        inner join information_schema.tables as t on t.table_schema = c.table_schema
+                                                 and t.table_name = c.table_name
+                                                 and t.table_type = 'BASE TABLE'
+        cross join concat_ws('.', quote_ident(t.table_schema), quote_ident(t.table_name)) as p(table_full_name)
+
+        inner join lateral (select
+                    (c.udt_name in ('char', 'varchar', 'bpchar')
+                    --если нет ограничения по длине то не трогаем тк это то же самое что TEXT
+                    and c.character_maximum_length is not null --выводим только те, где есть ограничения длины
+                    )
+                    -- Закомментировал, т.к. это условие не учитывает максимальной длины элемента массива,
+                    -- т.е. не отличает varchar[] и varchar(N)[].
+                    -- Пример: select '{1234}'::varchar(2)[], '{1234}'::varchar[]
+                    /*or
+                      (c.data_type = 'ARRAY' -- проверяем массивы
+                       and c.udt_name in ('_char', '_varchar','_bpchar') -- '_char%' '_varchar%' '_bpchar%' упрощено условие, выборка осталась неизменной
+                      )*/
+                    as is_varchar,
+
+                    c.udt_name = 'timestamp'
+                    --пока закомментировал, т.к. timestamp[] - это редкий случай и сообщение об ошибке нужно корректировать
+                    /*or (
+                        c.data_type = 'ARRAY'
+                        and
+                        c.udt_name = '_timestamp' --массивов с такими типами пока нет в базе, но могут появиться
+                      )*/
+                    as is_timestamp
+        ) as e on case when config.checks is null or 'has_not_varchar_columns'   = any(config.checks) then e.is_varchar
+                       when config.checks is null or 'has_not_timestamp_columns' = any(config.checks) then e.is_timestamp
+                       else false
+                  end
+        where true
+          -- исключаем схемы
+          AND (config.schemas_ignore_regexp is null OR t.table_schema !~ config.schemas_ignore_regexp)
+          AND t.table_schema::regnamespace != ALL (config.schemas_ignore)
+          AND pg_catalog.has_schema_privilege(t.table_schema, 'USAGE') --fix [42501] ERROR: permission denied for schema ...
+
+          -- исключаем таблицы
+          AND (config.tables_ignore_regexp is null OR p.table_full_name !~ config.tables_ignore_regexp)
+          AND (config.tables_ignore is null OR p.table_full_name::regclass != ALL (config.tables_ignore))
+
+          -- исключаем таблицы-секции
+          AND NOT EXISTS (SELECT
+                          FROM   pg_catalog.pg_inherits AS i
+                          WHERE  i.inhrelid = (t.table_schema || '.' || t.table_name)::regclass
+        )
+        limit 1;
+
+        IF FOUND THEN
+            -- https://www.postgrespro.ru/docs/postgresql/14/plpgsql-errors-and-messages
+            RAISE EXCEPTION using
+                message = rec.message,
+                detail  = rec.detail,
+                hint    = rec.hint,
+                errcode = rec.errcode,
+                column  = rec.column,
+                --constraint = '',
+                table    = rec.table,
+                schema   = rec.schema,
+                datatype = rec.datatype;
+        END IF;
+
+    end if;
 
     -- Наличие первичного или уникального индекса в таблице
     if config.checks is null or 'has_pk_uk' = any(config.checks) then
@@ -33,7 +482,7 @@ BEGIN
         SELECT *
         INTO rec
         FROM t
-        cross join lateral (select concat_ws('.', quote_ident(t.table_schema), quote_ident(t.table_name))) as p(table_full_name)
+        cross join concat_ws('.', quote_ident(t.table_schema), quote_ident(t.table_name)) as p(table_full_name)
         WHERE true
               -- исключаем схемы
               AND (config.schemas_ignore_regexp is null OR t.table_schema !~ config.schemas_ignore_regexp)
@@ -73,7 +522,7 @@ BEGIN
         index_data2 AS (
             SELECT *
             FROM index_data AS t
-            cross join lateral (select concat_ws('.', quote_ident(t.table_schema), quote_ident(t.table_name))) as p(table_full_name)
+            cross join concat_ws('.', quote_ident(t.table_schema), quote_ident(t.table_name)) as p(table_full_name)
             WHERE true
 
             -- исключаем схемы
@@ -261,7 +710,7 @@ BEGIN
                --t.table_schema, t.table_name
         into rec
         from information_schema.tables as t
-        cross join lateral (select concat_ws('.', quote_ident(t.table_schema), quote_ident(t.table_name))) as p(table_full_name)
+        cross join concat_ws('.', quote_ident(t.table_schema), quote_ident(t.table_name)) as p(table_full_name)
         where t.table_type = 'BASE TABLE'
           and coalesce(trim(obj_description((t.table_schema || '.' || t.table_name)::regclass::oid)), '') in ('', t.table_name)
 
@@ -299,7 +748,7 @@ BEGIN
         inner join information_schema.tables as t on t.table_schema = c.table_schema
                                                  and t.table_name = c.table_name
                                                  and t.table_type = 'BASE TABLE'
-        cross join lateral (select concat_ws('.', quote_ident(t.table_schema), quote_ident(t.table_name))) as p(table_full_name)
+        cross join concat_ws('.', quote_ident(t.table_schema), quote_ident(t.table_name)) as p(table_full_name)
         where c.column_name != 'id'
           and coalesce(trim(col_description((c.table_schema || '.' || t.table_name)::regclass::oid, c.ordinal_position)), '') in ('', c.column_name)
 
