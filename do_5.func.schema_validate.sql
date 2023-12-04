@@ -27,8 +27,9 @@ BEGIN
             format('Имя колонки должно соответствовать регулярному выражению: %s', config.view_column_name_regexp) as hint,
             '42602' /*invalid_name*/ as errcode,
             t.table_schema as schema,
-            t.table_name as table,
-            c.column_name as column
+            t.table_name as "table",
+            c.column_name as "column",
+            c.udt_name as datatype
         into rec
         from information_schema.columns as c
         inner join information_schema.tables as t on t.table_schema = c.table_schema
@@ -81,8 +82,9 @@ BEGIN
             format('Имя колонки должно соответствовать регулярному выражению: %s', config.table_column_name_regexp) as hint,
             '42602' /*invalid_name*/ as errcode,
             t.table_schema as schema,
-            t.table_name as table,
-            c.column_name as column
+            t.table_name as "table",
+            c.column_name as "column",
+            c.udt_name as datatype
         into rec
         from information_schema.columns as c
         inner join information_schema.tables as t on t.table_schema = c.table_schema
@@ -153,11 +155,11 @@ BEGIN
                 detail  = rec.detail,
                 hint    = rec.hint,
                 errcode = rec.errcode,
-                column  = rec.column,
+                --column  = rec.column,
                 --constraint = '',
-                table    = rec.table,
-                schema   = rec.schema,
-                datatype = rec.datatype;
+                --table    = rec.table,
+                schema   = rec.schema;
+                --datatype = rec.datatype;
         END IF;
 
     end if;
@@ -191,11 +193,11 @@ BEGIN
                 detail  = rec.detail,
                 hint    = rec.hint,
                 errcode = rec.errcode,
-                column  = rec.column,
+                --column  = rec.column,
                 --constraint = '',
-                table    = rec.table,
-                schema   = rec.schema,
-                datatype = rec.datatype;
+                --table    = rec.table,
+                schema   = rec.schema;
+                --datatype = rec.datatype;
         END IF;
 
     end if;
@@ -227,11 +229,11 @@ BEGIN
                 detail  = rec.detail,
                 hint    = rec.hint,
                 errcode = rec.errcode,
-                column  = rec.column,
+                --column  = rec.column,
                 --constraint = '',
-                table    = rec.table,
-                schema   = rec.schema,
-                datatype = rec.datatype;
+                --table    = rec.table,
+                schema   = rec.schema;
+                --datatype = rec.datatype;
         END IF;
 
     end if;
@@ -271,11 +273,11 @@ BEGIN
                 detail  = rec.detail,
                 hint    = rec.hint,
                 errcode = rec.errcode,
-                column  = rec.column,
+                --column  = rec.column,
                 --constraint = '',
                 table    = rec.table,
-                schema   = rec.schema,
-                datatype = rec.datatype;
+                schema   = rec.schema;
+                --datatype = rec.datatype;
         END IF;
 
     end if;
@@ -309,11 +311,11 @@ BEGIN
                 detail  = rec.detail,
                 hint    = rec.hint,
                 errcode = rec.errcode,
-                column  = rec.column,
+                --column  = rec.column,
                 --constraint = '',
                 table    = rec.table,
-                schema   = rec.schema,
-                datatype = rec.datatype;
+                schema   = rec.schema;
+                --datatype = rec.datatype;
         END IF;
 
     end if;
@@ -353,11 +355,11 @@ BEGIN
                 detail  = rec.detail,
                 hint    = rec.hint,
                 errcode = rec.errcode,
-                column  = rec.column,
+                --column  = rec.column,
                 --constraint = '',
                 table    = rec.table,
-                schema   = rec.schema,
-                datatype = rec.datatype;
+                schema   = rec.schema;
+                --datatype = rec.datatype;
         END IF;
 
     end if;
