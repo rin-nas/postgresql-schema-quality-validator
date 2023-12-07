@@ -209,7 +209,7 @@ BEGIN
 
         select
             'Схема имеет некорректное имя' as message,
-            format('Схема %I.%I имеет некорректное имя %I', t.schema_name) as detail,
+            format('Схема %I имеет некорректное имя', t.schema_name) as detail,
             format('Имя схемы должно соответствовать регулярному регулярному выражению: %s', config.schema_name_regexp) as hint,
             '42602' /*invalid_name*/ as errcode,
             t.schema_name as schema
@@ -292,8 +292,8 @@ BEGIN
             format('Триггер %I.%I имеет некорректное имя %I', t.trigger_schema, t.trigger_name, t.trigger_name) as detail,
             format('Имя тригера должно соответствовать регулярному регулярному выражению: %s', config.trigger_name_regexp) as hint,
             '42602' /*invalid_name*/ as errcode,
-            t.trigger_schema as schema,
-            t.trigger_name as "table"
+            t.event_object_schema as schema,
+            t.event_object_table as "table"
         into rec
         from information_schema.triggers as t
         cross join concat_ws('.', quote_ident(t.trigger_schema), quote_ident(t.trigger_name)) as p(trigger_full_name)
