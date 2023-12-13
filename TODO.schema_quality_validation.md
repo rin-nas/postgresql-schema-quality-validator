@@ -9,17 +9,27 @@
       Для этого перед миграцией нужно запускать функцию `select db_validation.schema_validate_prepare()`,
       которая будет сохранять список всех существующих объектов БД во временную таблицу (таблица автоматически удалится в конце транзакции).
    1. 🚨 Добавить возможность возвращать список всех проблем в виде таблицы или ошибку. Пустая таблица означает, что всё ок.
-   1. Добавить автотесты для каждого правила, для этого cделать тестовую схему `db_validation_test`.
+   1. Добавить автотесты для каждого правила, для этого сделать тестовую схему `db_validation_test`.
    1. Добавить в таблицу `schema_validate_config` колонки (новые опции):   
       ```sql
       views_ignore_regexp  text check ( views_ignore_regexp != ''
                                         and trim(views_ignore_regexp) = views_ignore_regexp
                                         and db_validation.is_regexp(views_ignore_regexp) ),
       views_ignore         regclass[],
-      table_columns_ignore db_validation.table_column[], --см. домен public.table_column 
-      view_columns_ignore  db_validation.view_column[],  --см. домен public.view_column
+      --table_columns_ignore db_validation.table_column[], --см. домен public.table_column 
+      --view_columns_ignore  db_validation.view_column[],  --см. домен public.view_column
+      
+      table_columns_invalid_name_ignore db_validation.table_column[], --см. домен public.table_column
+      view_columns_invalid_name_ignore  db_validation.view_column[],  --см. домен public.view_column
       ```
-      Добавить обработку этих опций в `schema_validate()` в каждую проверку. 
+      Добавить обработку этих опций в `schema_validate()` в каждую проверку.
+   1. Таблицу `schema_validate_config` переделать?
+      Колонки: check, compare (validate, ignore), 
+               schema, schema_regexp, 
+               table, table_regexp, 
+               view, view_regexp,
+               table_column, table_column_regexp,
+               view_column, view_column_regexp, ...  
 1. Описания (комментарии) объектов БД (`COMMENT ON ...`)
    1. Добавить проверку наличия [описания](https://www.postgrespro.ru/docs/postgresql/12/sql-comment) для объектов БД: схемы, представления, функции, процедуры, триггеры, типы, домены, роли. 
       В миграциях БД забывают это делать.
@@ -36,26 +46,37 @@
       Был случай, когда в названии колонки не заметили русскую букву "c".
    1. 🚨 Названия колонок БД НЕ должны совпадать с названиями существующих типов в БД (это плохая практика). Название должно показывать суть.
       ```sql
-      select table_name, column_name --, data_type, udt_name
-      from information_schema.columns
-      where true
-          and table_schema not in ('pg_catalog', 'migration', 'test')
-          and table_name !~ 'pg_'
+        --explain
+        with wrong_names as materialized (
+            SELECT unnest(array_cat(
+                            array_agg(typname)::text[],
+                            array_agg(sql_name) filter (where sql_name is not null)
+                          )) as types
+            FROM pg_type
+            LEFT JOIN format_type(oid, NULL::integer) AS f(sql_name)
+                   ON sql_name !~ '[" ]' AND sql_name != typname
+            WHERE true
+              AND typname != 'name'
+              AND typtype = 'b'
+              AND typarray != 0
+              AND typcategory NOT IN ('E', 'A')
+        )
+        --table wrong_names; --для отладки
+        select row_number() over (order by t.table_schema, t.table_name, c.column_name),
+               t.table_type,
+               concat(t.table_schema, '.', t.table_name, '.', c.column_name) as wrong_column_name,
+               c.data_type,
+               c.udt_name
+        from information_schema.columns as c
+        inner join information_schema.tables as t on t.table_schema = c.table_schema
+                                                 and t.table_name = c.table_name
+                                                 and t.table_type in ('BASE TABLE', 'VIEW')
+        where true
+          and t.table_schema not in ('pg_catalog', 'migration', 'test')
+          and t.table_name !~ 'pg_'
           --and column_name = udt_name
-          and column_name in (
-              SELECT unnest(array_cat(
-                         array_agg(typname),
-                         array_agg(sql_name) filter (where sql_name is not null)
-                     )) as types
-              FROM pg_type
-              LEFT JOIN format_type(oid, NULL::integer) as f(sql_name)
-                     on sql_name !~ '[" ]' and sql_name != typname
-              WHERE true
-                  AND typname != 'name'
-                  AND typtype = 'b'
-                  AND typarray != 0
-                  AND typcategory not in ('E', 'A')
-          );
+          and c.column_name in (table wrong_names)
+        order by wrong_column_name;
       ```
    1. Название колонки для первичного несоставного ключа должно соответствовать шаблону рег. выражения, например, заканчиваться на `id` или `guid` (сделать настраиваемым)
    1. Название колонки `guid` должно иметь тип `uuid` (сделать настраиваемым)
