@@ -118,6 +118,7 @@
    1. В текстовое поле нельзя записать `null` или пустую строку на выбор (когда нет ни одного ограничения типа `check` на колонку), д.б. только 1 способ. 
       Пример проблемной миграции: `alter table {table} add {column} varchar(10);`
    1. Для колонки `updated_at` (название задать в конфиге) должен быть триггер, который устанавливает значение `now()` при создании или обновлении записи
+   1. Разные типы данных в FK, см. https://github.com/dataegret/pg-utils/blob/master/sql/check_strange_fk.sql
 6. Взять идеи из
    1. [DBA: находим бесполезные индексы](https://habr.com/ru/company/tensor/blog/488104/)
    1. https://github.com/ankane/strong_migrations
