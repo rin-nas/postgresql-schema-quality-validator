@@ -8,3 +8,4 @@
    INSERT INTO person_last_subscription_access (person_id, subscription_id) VALUES (null, null), (null, null);
    --2 rows affected in 253 ms
    ```
+1. https://hakibenita.com/postgresql-unused-index-size#utilizing-partial-indexes
