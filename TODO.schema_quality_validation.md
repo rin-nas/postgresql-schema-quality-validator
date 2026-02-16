@@ -208,4 +208,7 @@
    Изменение правила сортировки может привести к некорректной работе индексов. Если подобное произошло, рекомендуется пересоздать индексы с новой версией правила сортировки.
    После этого можно обновить версию в системном каталоге командой `ALTER COLLATION ... REFRESH VERSION` и предупреждения перестанут выдаваться.
 1. См. так же https://postgrespro.ru/docs/postgresql/16/ddl-schemas#DDL-SCHEMAS-PATTERNS 
-1. Добавить проверку на наличие unlogged tables, которые не реплицируются. pg_class (… where relpersistence = ‘u’)   
+1. Добавить проверку на наличие unlogged tables, которые не реплицируются. pg_class (… where relpersistence = ‘u’)
+
+# TODO
+1. 25 железных правил проектирования баз данных в PostgreSQL / Хабр https://habr.com/ru/articles/996560/
