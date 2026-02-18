@@ -212,3 +212,4 @@
 
 # TODO
 1. 25 железных правил проектирования баз данных в PostgreSQL / Хабр https://habr.com/ru/articles/996560/
+1. https://github.com/sdblist/db_verifier
